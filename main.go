@@ -52,7 +52,7 @@ func main() {
 	hosts := []*Hosts{}
 	connections := []*Connections{}
 	for packet := range packetSource.Packets() {
-		c := printPackets(packet, connections)
+		c := createConnections(packet, connections)
 		if c != nil {
 			connections = c
 		}
@@ -99,7 +99,7 @@ func createHost(ip string, hosts []*Hosts) []*Hosts {
 	return hosts
 }
 
-func printPackets(packet gopacket.Packet, connections []*Connections) []*Connections {
+func createConnections(packet gopacket.Packet, connections []*Connections) []*Connections {
 	// Let's see if the packet is IP (even though the ether type told us)
 	ipLayer := packet.Layer(layers.LayerTypeIPv4)
 	if ipLayer != nil {
