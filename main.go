@@ -26,6 +26,7 @@ type Connections struct {
 	Target string `json:"target"`
 }
 
+// vars for gopacket
 var (
 	device      string = "eth0"
 	snapshotLen int32  = 1024
@@ -36,7 +37,6 @@ var (
 )
 
 func main() {
-	// Open device
 	// Open file instead of device
 	handle, err = pcap.OpenOffline("test1.pcap")
 	if err != nil {
@@ -44,26 +44,62 @@ func main() {
 	}
 	defer handle.Close()
 
-	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
-
-	/* get a list of all IP addresses in the pcap */
 	ipList := []string{}
-	traffic := []*Traffic{}
-	hosts := []*Hosts{}
 	connections := []*Connections{}
+	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 	for packet := range packetSource.Packets() {
-		c := createConnections(packet, connections)
-		if c != nil {
-			connections = c
-		}
 		ipLayer := packet.Layer(layers.LayerTypeIPv4)
 		if ipLayer != nil {
 			ip, _ := ipLayer.(*layers.IPv4)
-			ipList = append(ipList, ip.SrcIP.String(), ip.DstIP.String())
+			ipList = getIPList(ip, ipList)
+			c := createConnections(ip, connections)
+			if c != nil {
+				connections = c
+			}
 		}
 	}
+	uniqueIPs := getUniqueIps(ipList)
+	hosts := createHosts(uniqueIPs)
 
-	/* get all the unique IP addresses from the previous made list */
+	traffic := []*Traffic{}
+	t := new(Traffic)
+	t.Type = "web2.0"
+	t.Nodes = hosts
+	t.Links = connections
+	traffic = append(traffic, t)
+	consB, _ := json.Marshal(traffic)
+	fmt.Println(string(consB))
+}
+
+// This function will take our packets and pull out all the IP Connections
+// and create the struct with them.
+func createConnections(ip *layers.IPv4, connections []*Connections) []*Connections {
+	c := new(Connections)
+	c.Source = ip.SrcIP.String()
+	c.Target = ip.DstIP.String()
+	connections = append(connections, c)
+	return connections
+}
+
+func createHosts(uniqueIPs []string) []*Hosts {
+	hosts := []*Hosts{}
+	for _, ip := range uniqueIPs {
+		h := new(Hosts)
+		h.Id = ip
+		hosts = append(hosts, h)
+	}
+	return hosts
+}
+
+// This function will go through the pcap and pull out unique IP addresses
+func getIPList(ip *layers.IPv4, ipList []string) []string {
+	ipList = append(ipList, ip.SrcIP.String(), ip.DstIP.String())
+	return ipList
+
+}
+
+// Take in the list of IP addresses and return a list of unique ones
+func getUniqueIps(ipList []string) []string {
 	uniqueIPs := map[string]bool{}
 	result := []string{}
 	for _, v := range ipList {
@@ -74,47 +110,5 @@ func main() {
 			result = append(result, v)
 		}
 	}
-
-	for ip := range uniqueIPs {
-		h := createHost(ip, hosts)
-		if h != nil {
-			hosts = h
-		}
-	}
-
-	t := new(Traffic)
-	t.Type = "web2.0"
-	t.Nodes = hosts
-	t.Links = connections
-	traffic = append(traffic, t)
-	consB, _ := json.Marshal(traffic)
-	fmt.Println(string(consB))
-}
-
-func createHost(ip string, hosts []*Hosts) []*Hosts {
-	h := new(Hosts)
-	h.Id = ip
-	hosts = append(hosts, h)
-
-	return hosts
-}
-
-func createConnections(packet gopacket.Packet, connections []*Connections) []*Connections {
-	// Let's see if the packet is IP (even though the ether type told us)
-	ipLayer := packet.Layer(layers.LayerTypeIPv4)
-	if ipLayer != nil {
-		//fmt.Println("IPv4 layer detected.")
-		ip, _ := ipLayer.(*layers.IPv4)
-
-		// add the connections between IPs to a list
-		//connections := []*Connections{}
-		c := new(Connections)
-		c.Source = ip.SrcIP.String()
-		c.Target = ip.DstIP.String()
-		connections = append(connections, c)
-
-		return connections
-	}
-
-	return nil
+	return result
 }
